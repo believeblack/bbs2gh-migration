@@ -1,0 +1,76 @@
+BBS2GH – Environment Variables & Secrets
+=======================================
+
+REQUIRED (End-to-end migration)
+-------------------------------
+
+GitHub:
+GH_PAT
+
+Bitbucket (required for migration):
+BBS_BASE_URL        # workflow input
+BBS_USERNAME
+BBS_PASSWORD
+
+SSH (required for migration):
+SSH_USER
+SSH_PRIVATE_KEY    # must be unencrypted (no passphrase)
+
+
+REQUIRED (Bitbucket API – prechecks & validation)
+-------------------------------------------------
+
+Option 1: PAT (recommended)
+BBS_PAT
+
+Option 2: Basic authentication
+BBS_AUTH_TYPE=Basic
+BBS_USERNAME
+BBS_PASSWORD
+
+
+WORKFLOW INPUTS (not secrets)
+-----------------------------
+
+csv_path
+bbs_base_url
+max_concurrent
+target_api_url
+approver
+runner_label
+run_prechecks
+run_migration
+run_post_validation
+
+
+OPTIONAL (Data Residency)
+-------------------------
+
+TARGET_API_URL
+
+
+OPTIONAL STORAGE BACKENDS (auto-detected)
+-----------------------------------------
+
+Azure Blob Storage:
+AZURE_STORAGE_CONNECTION_STRING
+
+AWS S3:
+AWS_ACCESS_KEY_ID
+AWS_SECRET_ACCESS_KEY
+AWS_BUCKET_NAME
+AWS_REGION
+
+NOTE:
+- Do NOT configure Azure and AWS together
+- If no storage variables are set, GitHub-owned storage is used
+
+
+MINIMAL RECOMMENDED SET (most common)
+------------------------------------
+
+GH_PAT
+BBS_USERNAME
+BBS_PASSWORD
+SSH_USER
+SSH_PRIVATE_KEY

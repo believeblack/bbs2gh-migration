@@ -1,0 +1,31 @@
+# ----- Script runtime outputs -----
+# Pre-checks output
+bbs_pr_validation_output-*.csv
+
+# Migration outputs
+repo_migration_output-*.csv
+migration-*.txt
+
+# Validation outputs
+validation-log-*.txt
+validation-summary-*.csv
+validation-summary-*.md
+
+# ----- Secrets / local config -----
+*.pem
+*.key
+.env
+.env.*
+
+# ----- Local samples / scratch -----
+samples/
+
+# ----- OS / editor noise -----
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
