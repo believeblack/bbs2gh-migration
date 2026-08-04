@@ -75,7 +75,7 @@ jobs:
       open_pr_repos: ${{ steps.precheck-meta.outputs.open_pr_repos }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Resolve BBS_BASE_URL (repo/environment variable)
         shell: bash
