@@ -196,7 +196,10 @@ jobs:
           if-no-files-found: warn
           
   approve:
-    runs-on: ubuntu-latest
+    name: Approve
+    runs-on: ${{ startsWith(inputs.runner_label, '[') && fromJson(inputs.runner_label) || inputs.runner_label }}
+    timeout-minutes: 50400
+    needs: [prechecks]
     environment: ${{ inputs.approval_environment }}
     steps:
       - run: echo "Approved"
@@ -205,7 +208,7 @@ jobs:
     name: Migration
     runs-on: ${{ startsWith(inputs.runner_label, '[') && fromJson(inputs.runner_label) || inputs.runner_label }}
     timeout-minutes: 50400
-    needs: [prechecks]
+    needs: [approve]
     if: ${{ always()
       && inputs.run_migration == 'true'
       && (needs.prechecks.result == 'success' || (needs.prechecks.result == 'skipped' && inputs.run_pre_validation == 'false')) }}
