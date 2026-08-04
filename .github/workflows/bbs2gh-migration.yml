@@ -4,21 +4,21 @@ on:
   workflow_dispatch:
     inputs:
       environment:
-        description: "GitHub Environment that holds the migration secrets & variables (and optional approval reviewers)."
+        description: "GitHub Environment holding secrets & variables for pre-check, validation and monitoring. No required reviewers."
         required: true
         default: 'bbs-migration'
         type: string
+      approval_environment:
+        description: "GitHub Environment used only by the migration stage. Add required reviewers here to gate migration."
+        required: true
+        default: 'bbs-migration-approval'
+        type: string
       max_concurrent:
-        description: Maximum concurrent migrations (1-10)
+        description: "Maximum concurrent migrations (1-10; the tool supports up to 10)"
         required: false
         default: '5'
         type: choice
-        options: ['1','2','3','4','5','6','7','8','9','10']
-      target_api_url:
-        description: "GitHub data residency API base URL. (https://api.<tenant>.ghe.com)"
-        required: false
-        default: ''
-        type: string
+        options: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10']
       verbose:
         description: Enable verbose logging (sets VERBOSE=1 and uploads *.log artifacts if produced)
         required: false
@@ -139,17 +139,18 @@ jobs:
             else
               total=$(awk -F',' 'NR>1 {c++} END{print c+0}' "$out_csv")
               ready=$(awk -F',' 'NR>1 && $7=="true" {c++} END{print c+0}' "$out_csv")
-              with_prs=$(( total - ready ))
+              large=$(awk -F',' 'NR>1 && $8=="true" {c++} END{print c+0}' "$out_csv")
               echo "- **Total repos checked**: $total"
               echo "- **Ready to migrate**: ✅ $ready"
-              echo "- **With open PRs**: $( [[ "$with_prs" -gt 0 ]] && echo \"⚠️ $with_prs\" || echo \"0\" )"
+              echo "- **Skipped (large files)**: $( [[ "$large" -gt 0 ]] && echo \"⏭️ $large\" || echo \"0\" )"
+              echo "- **With open PRs**: $open_pr_repos (informational — open PRs do not block migration)"
               echo
               echo "**Repo Details**"
               echo
               echo "| Project Key | Repo | Open PRs | Large Files | Ready |"
               echo "|-|-|-|-|-|"
               awk -F',' 'NR>1 {
-                mark=($7=="true" ? "✅" : "⚠️");
+                mark=($7=="true" ? "✅" : "⏭️ skipped");
                 lf=($8=="true" ? "⏭️ yes" : "no");
                 printf("| `%s` | `%s` | %s | %s | %s |\n", $1, $3, $5, lf, mark);
               }' "$out_csv"
@@ -202,7 +203,7 @@ jobs:
     if: ${{ always()
       && inputs.run_migration == 'true'
       && (needs.prechecks.result == 'success' || (needs.prechecks.result == 'skipped' && inputs.run_pre_validation == 'false')) }}
-    environment: ${{ inputs.environment }}
+    environment: ${{ inputs.approval_environment }}
     env:
       GH_TOKEN: ${{ secrets.GH_PAT }}
       GH_PAT: ${{ secrets.GH_PAT }}
