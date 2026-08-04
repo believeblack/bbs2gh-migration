@@ -194,7 +194,13 @@ jobs:
             large_file_repos-*.csv
           retention-days: 30
           if-no-files-found: warn
-
+          
+  approve:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.approval_environment }}
+    steps:
+      - run: echo "Approved"
+      
   migrate:
     name: Migration
     runs-on: ${{ startsWith(inputs.runner_label, '[') && fromJson(inputs.runner_label) || inputs.runner_label }}
@@ -203,7 +209,7 @@ jobs:
     if: ${{ always()
       && inputs.run_migration == 'true'
       && (needs.prechecks.result == 'success' || (needs.prechecks.result == 'skipped' && inputs.run_pre_validation == 'false')) }}
-    environment: ${{ inputs.approval_environment }}
+    environment: ${{ inputs.environment }}
     env:
       GH_TOKEN: ${{ secrets.GH_PAT }}
       GH_PAT: ${{ secrets.GH_PAT }}
