@@ -10,6 +10,8 @@
 # Env (global settings):
 # BBS_BASE_URL
 # BBS_USERNAME / BBS_PASSWORD (Bitbucket admin/super admin)
+# BBS_SHARED_HOME (shared home path ON the Bitbucket Server host; defaults to
+#   $BITBUCKET_HOME/shared when BITBUCKET_HOME is set, else the gh bbs2gh default)
 # SSH_USER
 # SSH_PRIVATE_KEY_PATH or SSH_PRIVATE_KEY (raw PEM; should NOT be passphrase-protected)
 # GH_TOKEN/GH_PAT or gh auth login
@@ -38,7 +40,7 @@ VERBOSE="${VERBOSE:-0}"
 ############################################
 # CLI args
 ############################################
-MAX_CONCURRENT=10
+MAX_CONCURRENT=3
 CSV_PATH="repos.csv"
 OUTPUT_PATH="" # empty -> timestamped file
 
@@ -55,6 +57,7 @@ while [[ $# -gt 0 ]]; do
     --target-api-url|--github-api-url) TARGET_API_URL="$2"; shift 2;;
 
     -*|--*) echo -e "\033[31m[ERROR] Unknown option: $1\033[0m"; exit 1;;
+    *) echo -e "\033[31m[ERROR] Unexpected positional arg: $1\033[0m"; exit 1;;
   esac
 done
 
@@ -140,6 +143,33 @@ detect_bbs_install() {
   return 0
 }
 detect_bbs_install || true
+
+BBS_SHARED_HOME_ARGS=()
+resolve_bbs_shared_home() {
+  local shared="${BBS_SHARED_HOME:-}"
+  if [[ -z "$shared" && -n "${BITBUCKET_HOME:-}" ]]; then
+    local home derived
+    home="${BITBUCKET_HOME%/}"
+    derived="$home"
+    [[ "$derived" == */shared ]] || derived="${derived}/shared"
+    if [[ -d "${derived}/data/migration/export" ]]; then
+      shared="$derived"
+    elif [[ -d "${home}/data/migration/export" ]]; then
+      shared="$home"
+      echo -e "\033[32m[OK] Export directory found directly under BITBUCKET_HOME; using it as the shared home.\033[0m"
+    else
+      shared="$derived"
+    fi
+  fi
+  if [[ -z "$shared" ]]; then
+    echo -e "\033[33m[WARNING] Neither BBS_SHARED_HOME nor BITBUCKET_HOME is set. gh bbs2gh will look for the export archive under its default shared home (/var/atlassian/application-data/bitbucket/shared). Set BBS_SHARED_HOME to the shared home path ON THE BITBUCKET SERVER HOST if your install differs.\033[0m"
+    return 0
+  fi
+  BBS_SHARED_HOME_ARGS=(--bbs-shared-home "$shared")
+  echo -e "\033[32m[OK] Bitbucket shared home passed to gh bbs2gh: ${shared}\033[0m"
+  return 0
+}
+resolve_bbs_shared_home
 
 # BBS env validation
 if [[ -z "${BBS_BASE_URL:-}" || -z "${BBS_USERNAME:-}" || -z "${BBS_PASSWORD:-}" ]]; then
@@ -394,6 +424,7 @@ migrate_repository() {
       --github-repo "${github_repo}" \
       "${STORAGE_ARGS[@]}" \
       ${BBS_TLS_ARGS[@]+"${BBS_TLS_ARGS[@]}"} \
+      ${BBS_SHARED_HOME_ARGS[@]+"${BBS_SHARED_HOME_ARGS[@]}"} \
       --ssh-user "${SSH_USER}" \
       --ssh-private-key "${resolvedKey}" \
       --target-api-url "${TARGET_API_URL}" \
