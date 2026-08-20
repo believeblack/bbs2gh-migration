@@ -109,6 +109,56 @@ check_tls
 
 urlencode_uri() { jq -rn --arg s "$1" '$s|@uri'; }
 
+declare -A SLUG_CACHE=()
+
+resolve_repo_slug() {
+  local projectKey="$1" value="$2"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  projectKey="${projectKey#"${projectKey%%[![:space:]]*}"}"
+  projectKey="${projectKey%"${projectKey##*[![:space:]]}"}"
+  local key="${projectKey}/${value}"
+  if [[ -n "${SLUG_CACHE[$key]:-}" ]]; then
+    printf '%s' "${SLUG_CACHE[$key]}"
+    return 0
+  fi
+
+  local encP encV status
+  encP="$(urlencode_uri "$projectKey")"
+  encV="$(urlencode_uri "$value")"
+
+  status="$(curl "${CURL_OPTS[@]}" -o /dev/null -w '%{http_code}' -H "$(auth_header)" \
+    "${BASE_URL}/rest/api/1.0/projects/${encP}/repos/${encV}" 2>/dev/null || echo 000)"
+  if [[ "$status" == "200" ]]; then
+    SLUG_CACHE[$key]="$value"
+    printf '%s' "$value"
+    return 0
+  fi
+
+  local start=0 resp found=""
+  while :; do
+    resp="$(curl_json "${BASE_URL}/rest/api/1.0/projects/${encP}/repos?limit=100&start=${start}" 2>/dev/null || true)"
+    [[ -z "$resp" ]] && break
+    found="$(printf '%s' "$resp" | jq -r --arg n "$value" '.values[]? | select(((.name // "") | ascii_downcase) == ($n | ascii_downcase)) | .slug' 2>/dev/null | head -n1 || true)"
+    [[ -n "$found" ]] && break
+    [[ "$(printf '%s' "$resp" | jq -r '.isLastPage' 2>/dev/null)" == "true" ]] && break
+    local nextStart; nextStart="$(printf '%s' "$resp" | jq -r '.nextPageStart // empty' 2>/dev/null)"
+    [[ -z "$nextStart" ]] && break
+    start="$nextStart"
+  done
+
+  if [[ -n "$found" ]]; then
+    log_warning "'${value}' is a repository NAME, not a slug. Resolved to slug '${found}' for ${projectKey}." >&2
+    SLUG_CACHE[$key]="$found"
+    printf '%s' "$found"
+    return 0
+  fi
+
+  SLUG_CACHE[$key]="$value"
+  printf '%s' "$value"
+  return 0
+}
+
 # ---- Bitbucket helpers --------------------------------------------------------
 # Returns tab-separated lines: branchName<TAB>sha  (paginated, limit 500 per page)
 get_bbs_branches_with_shas() {
@@ -383,6 +433,7 @@ while IFS= read -r line; do
   bbsRepoSlug="$(strip_quotes "${F[${COLIDX[repo]}]}")"
   ghOrg="$(strip_quotes "${F[${COLIDX[github_org]}]}")"
   ghRepo="$(strip_quotes "${F[${COLIDX[github_repo]}]}")"
+  bbsRepoSlug="$(resolve_repo_slug "$bbsProjectKey" "$bbsRepoSlug")"
   tmp_out="$(mktemp)"
   OUTFILES+=("$tmp_out")
   validate_repo "$bbsProjectKey" "$bbsRepoSlug" "$ghOrg" "$ghRepo" "$tmp_out" &
