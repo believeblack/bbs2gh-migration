@@ -505,6 +505,78 @@ load_large_file_skip_list() {
 load_large_file_skip_list
 
 ############################################
+# Repo slug resolution (gh bbs2gh --bbs-repo expects the slug, not the display name)
+############################################
+BBS_CURL_OPTS=(-sS)
+case "${BBS_DISABLE_SSL_VERIFY:-}" in
+  [Yy]|[Yy][Ee][Ss]|[Tt][Rr][Uu][Ee]|1) BBS_CURL_OPTS+=(--insecure) ;;
+esac
+
+bbs_auth_header() {
+  if [[ -n "${BBS_PAT:-}" ]]; then
+    printf 'Authorization: Bearer %s' "$BBS_PAT"
+  else
+    printf 'Authorization: Basic %s' "$(printf '%s:%s' "${BBS_USERNAME}" "${BBS_PASSWORD}" | base64 | tr -d '\n')"
+  fi
+}
+
+bbs_urlencode() { jq -rn --arg v "$1" '$v|@uri'; }
+
+declare -A SLUG_CACHE=()
+
+resolve_repo_slug() {
+  local projectKey="$1" value="$2"
+  local key="${projectKey}/${value}"
+  if [[ -n "${SLUG_CACHE[$key]:-}" ]]; then
+    printf '%s' "${SLUG_CACHE[$key]}"
+    return 0
+  fi
+
+  if ! command -v jq >/dev/null 2>&1; then
+    printf '%s' "$value"
+    return 0
+  fi
+
+  local encP encV status
+  encP="$(bbs_urlencode "$projectKey")"
+  encV="$(bbs_urlencode "$value")"
+
+  status="$(curl "${BBS_CURL_OPTS[@]}" -o /dev/null -w '%{http_code}' \
+    -H "$(bbs_auth_header)" \
+    "${BBS_BASE_URL}/rest/api/1.0/projects/${encP}/repos/${encV}" 2>/dev/null || echo 000)"
+  if [[ "$status" == "200" ]]; then
+    SLUG_CACHE[$key]="$value"
+    printf '%s' "$value"
+    return 0
+  fi
+
+  local start=0 resp found=""
+  while :; do
+    resp="$(curl "${BBS_CURL_OPTS[@]}" -H "$(bbs_auth_header)" \
+      "${BBS_BASE_URL}/rest/api/1.0/projects/${encP}/repos?limit=100&start=${start}" 2>/dev/null || true)"
+    [[ -z "$resp" ]] && break
+    found="$(printf '%s' "$resp" | jq -r --arg n "$value" '.values[]? | select((.name // "") == $n or ((.name // "") | ascii_downcase) == ($n | ascii_downcase)) | .slug' 2>/dev/null | head -n1 || true)"
+    [[ -n "$found" ]] && break
+    [[ "$(printf '%s' "$resp" | jq -r '.isLastPage' 2>/dev/null)" == "true" ]] && break
+    local nextStart; nextStart="$(printf '%s' "$resp" | jq -r '.nextPageStart // empty' 2>/dev/null)"
+    [[ -z "$nextStart" ]] && break
+    start="$nextStart"
+  done
+
+  if [[ -n "$found" ]]; then
+    echo -e "\033[33m[WARNING] '${value}' is a repository NAME, not a slug. Resolved to slug '${found}' for ${projectKey}.\033[0m" >&2
+    SLUG_CACHE[$key]="$found"
+    printf '%s' "$found"
+    return 0
+  fi
+
+  echo -e "\033[33m[WARNING] Could not resolve '${projectKey}/${value}' to a repository slug. Passing it through unchanged.\033[0m" >&2
+  SLUG_CACHE[$key]="$value"
+  printf '%s' "$value"
+  return 0
+}
+
+############################################
 # Load queue from CSV rows (skip header)
 ############################################
 LINE_NUM=0
@@ -534,6 +606,8 @@ while IFS= read -r line; do
     echo "Ensure project-key, repo, github_org, github_repo, gh_repo_visibility are populated."
     continue
   fi
+
+  repoSlug="$(resolve_repo_slug "${projectKey}" "${repoSlug}")"
 
   if [[ -n "${LARGE_FILE_SKIP["${projectKey}/${repoSlug}"]:-}" ]]; then
     echo "[WARNING] Skipping ${projectKey}/${repoSlug} -> ${github_org}/${github_repo}: contains large file(s) flagged by prechecks."
