@@ -111,6 +111,8 @@ urlencode_uri() { jq -rn --arg s "$1" '$s|@uri'; }
 
 declare -A SLUG_CACHE=()
 
+WARN_SLUG() { log_warning "$*" >&2; }
+
 resolve_repo_slug() {
   local projectKey="$1" value="$2"
   value="${value#"${value%%[![:space:]]*}"}"
@@ -123,17 +125,26 @@ resolve_repo_slug() {
     return 0
   fi
 
-  local encP encV status
+  local encP encV status probe_body
+  probe_body="$(mktemp)"
   encP="$(urlencode_uri "$projectKey")"
   encV="$(urlencode_uri "$value")"
 
-  status="$(curl "${CURL_OPTS[@]}" -o /dev/null -w '%{http_code}' -H "$(auth_header)" \
+  status="$(curl "${CURL_OPTS[@]}" -o "$probe_body" -w '%{http_code}' -H "$(auth_header)" \
     "${BASE_URL}/rest/api/1.0/projects/${encP}/repos/${encV}" 2>/dev/null || echo 000)"
   if [[ "$status" == "200" ]]; then
-    SLUG_CACHE[$key]="$value"
-    printf '%s' "$value"
-    return 0
+    local realSlug; realSlug="$(jq -r '.slug // empty' < "$probe_body" 2>/dev/null || true)"
+    rm -f "$probe_body"
+    if [[ -n "$realSlug" ]]; then
+      if [[ "$realSlug" != "$value" ]]; then
+        WARN_SLUG "'${value}' is a repository NAME, not a slug. Resolved to slug '${realSlug}' for ${projectKey}."
+      fi
+      SLUG_CACHE[$key]="$realSlug"
+      printf '%s' "$realSlug"
+      return 0
+    fi
   fi
+  rm -f "$probe_body"
 
   local start=0 resp found=""
   while :; do
@@ -146,6 +157,14 @@ resolve_repo_slug() {
     [[ -z "$nextStart" ]] && break
     start="$nextStart"
   done
+
+  if [[ -z "$found" ]]; then
+    local resp2
+    resp2="$(curl "${CURL_OPTS[@]}" -H "$(auth_header)" "${BASE_URL}/rest/api/1.0/repos?projectkey=${encP}&name=${encV}&limit=100" 2>/dev/null || true)"
+    if [[ -n "$resp2" ]]; then
+      found="$(printf '%s' "$resp2" | jq -r --arg n "$value" --arg pk "$projectKey" '.values[]? | select((((.project.key // "")|ascii_downcase)==($pk|ascii_downcase)) and (((.name // "")|ascii_downcase)==($n|ascii_downcase))) | .slug' 2>/dev/null | head -n1 || true)"
+    fi
+  fi
 
   if [[ -n "$found" ]]; then
     log_warning "'${value}' is a repository NAME, not a slug. Resolved to slug '${found}' for ${projectKey}." >&2
@@ -428,11 +447,18 @@ validate_repo() {
 # Launch all repos in parallel
 declare -a PIDS=() OUTFILES=()
 while IFS= read -r line; do
+  if [[ -z "${line//[[:space:]]/}" ]]; then
+    continue
+  fi
   mapfile -t F < <(parse_csv_line "$line")
-  bbsProjectKey="$(strip_quotes "${F[${COLIDX[project-key]}]}")"
-  bbsRepoSlug="$(strip_quotes "${F[${COLIDX[repo]}]}")"
-  ghOrg="$(strip_quotes "${F[${COLIDX[github_org]}]}")"
-  ghRepo="$(strip_quotes "${F[${COLIDX[github_repo]}]}")"
+  bbsProjectKey="$(strip_quotes "${F[${COLIDX[project-key]}]:-}")"
+  bbsRepoSlug="$(strip_quotes "${F[${COLIDX[repo]}]:-}")"
+  ghOrg="$(strip_quotes "${F[${COLIDX[github_org]}]:-}")"
+  ghRepo="$(strip_quotes "${F[${COLIDX[github_repo]}]:-}")"
+  if [[ -z "$bbsProjectKey" || -z "$bbsRepoSlug" || -z "$ghOrg" || -z "$ghRepo" ]]; then
+    log_warning "Skipping malformed CSV row (${#F[@]} field(s)): ${line}"
+    continue
+  fi
   bbsRepoSlug="$(resolve_repo_slug "$bbsProjectKey" "$bbsRepoSlug")"
   tmp_out="$(mktemp)"
   OUTFILES+=("$tmp_out")
