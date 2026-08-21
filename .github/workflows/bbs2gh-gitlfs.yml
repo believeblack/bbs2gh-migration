@@ -67,7 +67,7 @@ jobs:
       flagged_repos: ${{ steps.scan-meta.outputs.flagged_repos }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Resolve BBS_BASE_URL (repo/environment variable)
         shell: bash
@@ -154,7 +154,7 @@ jobs:
 
       - name: Upload Git LFS scan output
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: bbs-lfs-scan-${{ github.run_id }}
           path: |
@@ -194,7 +194,7 @@ jobs:
       VERBOSE: ${{ inputs.verbose && '1' || '0' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Write large-file migration start summary
         shell: bash
@@ -287,7 +287,7 @@ jobs:
       - name: Download scan output (this run)
         if: ${{ inputs.scan_run_id == '' }}
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: bbs-lfs-scan-${{ github.run_id }}
           path: ${{ runner.temp }}/bbs2gh-lfs
@@ -295,7 +295,7 @@ jobs:
       - name: Download scan output (earlier run)
         if: ${{ inputs.scan_run_id != '' }}
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: bbs-lfs-scan-${{ inputs.scan_run_id }}
           path: ${{ runner.temp }}/bbs2gh-lfs
@@ -384,7 +384,7 @@ jobs:
 
       - name: Upload large-file migration logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: lfs-migration-logs-${{ github.run_id }}
           path: |
@@ -395,7 +395,7 @@ jobs:
 
       - name: Upload large-file migration output CSV
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: lfs-migration-output-csv-${{ github.run_id }}
           path: ${{ runner.temp }}/bbs2gh-lfs/repo_migration_output-*.csv
