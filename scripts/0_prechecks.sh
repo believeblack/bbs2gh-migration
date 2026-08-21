@@ -136,6 +136,8 @@ trap 'rm -f "${rows_tmp:-}" "${ready_tmp:-}" "${results_tmp:-}"' EXIT
 
 declare -A SLUG_CACHE=()
 
+WARN_SLUG() { log_warning "$*" >&2; }
+
 resolve_repo_slug() {
   local projectKey="$1" value="$2"
   value="${value#"${value%%[![:space:]]*}"}"
@@ -148,17 +150,26 @@ resolve_repo_slug() {
     return 0
   fi
 
-  local encP encV status
+  local encP encV status probe_body
+  probe_body="$(mktemp)"
   encP="$(urlencode "$projectKey")"
   encV="$(urlencode "$value")"
 
-  status="$(curl "${CURL_OPTS[@]}" -o /dev/null -w '%{http_code}' -H "$(auth_header)" \
+  status="$(curl "${CURL_OPTS[@]}" -o "$probe_body" -w '%{http_code}' -H "$(auth_header)" \
     "${BASE_URL}/rest/api/1.0/projects/${encP}/repos/${encV}" 2>/dev/null || echo 000)"
   if [[ "$status" == "200" ]]; then
-    SLUG_CACHE[$key]="$value"
-    printf '%s' "$value"
-    return 0
+    local realSlug; realSlug="$(jq -r '.slug // empty' < "$probe_body" 2>/dev/null || true)"
+    rm -f "$probe_body"
+    if [[ -n "$realSlug" ]]; then
+      if [[ "$realSlug" != "$value" ]]; then
+        WARN_SLUG "'${value}' is a repository NAME, not a slug. Resolved to slug '${realSlug}' for ${projectKey}."
+      fi
+      SLUG_CACHE[$key]="$realSlug"
+      printf '%s' "$realSlug"
+      return 0
+    fi
   fi
+  rm -f "$probe_body"
 
   local start=0 resp found=""
   while :; do
@@ -171,6 +182,14 @@ resolve_repo_slug() {
     [[ -z "$nextStart" ]] && break
     start="$nextStart"
   done
+
+  if [[ -z "$found" ]]; then
+    local resp2
+    resp2="$(curl "${CURL_OPTS[@]}" -H "$(auth_header)" "${BASE_URL}/rest/api/1.0/repos?projectkey=${encP}&name=${encV}&limit=100" 2>/dev/null || true)"
+    if [[ -n "$resp2" ]]; then
+      found="$(printf '%s' "$resp2" | jq -r --arg n "$value" --arg pk "$projectKey" '.values[]? | select((((.project.key // "")|ascii_downcase)==($pk|ascii_downcase)) and (((.name // "")|ascii_downcase)==($n|ascii_downcase))) | .slug' 2>/dev/null | head -n1 || true)"
+    fi
+  fi
 
   if [[ -n "$found" ]]; then
     log_warning "'${value}' is a repository NAME, not a slug. Resolved to slug '${found}' for ${projectKey}." >&2
@@ -306,6 +325,9 @@ echo "project_key,project_name,repo_slug,is_archived,open_pr_count,warnings,read
 total_open_prs=0
 pr_check_failed=false
 while IFS=',' read -r projKey projName repoSlug isArchived _rest; do
+  if [[ -z "${projKey//[[:space:]]/}" || -z "${repoSlug//[[:space:]]/}" ]]; then
+    continue
+  fi
   repoSlug="$(resolve_repo_slug "$projKey" "$repoSlug")"
   openPrs="$(get_open_pr_count "$projKey" "$repoSlug")"
   if [[ "$openPrs" == "ERROR" || ! "$openPrs" =~ ^[0-9]+$ ]]; then
