@@ -74,7 +74,7 @@ jobs:
       open_pr_repos: ${{ steps.precheck-meta.outputs.open_pr_repos }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Resolve BBS_BASE_URL (repo/environment variable)
         shell: bash
@@ -277,7 +277,7 @@ jobs:
 
       - name: Upload prechecks output
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: bbs-prechecks-${{ github.run_id }}
           path: |
@@ -315,7 +315,7 @@ jobs:
       VERBOSE: ${{ inputs.verbose && '1' || '0' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Write migration start summary
         shell: bash
@@ -421,7 +421,7 @@ jobs:
       - name: Download large-file skip-list from Git LFS scan run
         if: ${{ inputs.lfs_scan_run_id != '' }}
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: bbs-lfs-scan-${{ inputs.lfs_scan_run_id }}
           path: ${{ runner.temp }}/bbs2gh-run
@@ -499,7 +499,7 @@ jobs:
 
       - name: Upload migration logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: migration-logs-${{ github.run_id }}
           path: |
@@ -510,7 +510,7 @@ jobs:
 
       - name: Upload migration output CSV
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: migration-output-csv-${{ github.run_id }}
           path: ${{ runner.temp }}/bbs2gh-run/repo_migration_output-*.csv
@@ -582,7 +582,7 @@ jobs:
       GH_PAT: ${{ secrets.GH_PAT }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Write validation start summary
         shell: bash
@@ -632,7 +632,7 @@ jobs:
 
       - name: Download migration output CSV
         continue-on-error: true
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: migration-output-csv-${{ github.run_id }}
           path: ${{ runner.temp }}/bbs2gh-migrate-out
@@ -738,7 +738,7 @@ jobs:
 
       - name: Upload validation outputs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: validation-results-${{ github.run_id }}
           path: |
@@ -767,14 +767,14 @@ jobs:
           command -v python3 >/dev/null 2>&1 || { sudo apt-get update && sudo apt-get install -y python3; }
 
       - name: Download migration output CSV
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: migration-output-csv-${{ github.run_id }}
           path: mon-migrate
         continue-on-error: true
 
       - name: Download validation results
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v6
         with:
           name: validation-results-${{ github.run_id }}
           path: mon-validate
@@ -844,7 +844,7 @@ jobs:
 
       - name: Upload monitoring report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: monitoring-report-${{ github.run_id }}
           path: monitoring-report.md
