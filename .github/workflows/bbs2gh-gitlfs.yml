@@ -164,8 +164,8 @@ jobs:
           retention-days: 30
           if-no-files-found: warn
 
-  migrate_lfs:
-    name: Large-file Migration
+  approval_lfs:
+    name: Approve large-file migration
     runs-on: ${{ startsWith(inputs.runner_label, '[') && fromJson(inputs.runner_label) || inputs.runner_label }}
     timeout-minutes: 50400
     needs: [scan]
@@ -173,6 +173,21 @@ jobs:
       && inputs.run_lfs_migration == 'true'
       && (needs.scan.result == 'success' || (needs.scan.result == 'skipped' && inputs.run_scan == 'false')) }}
     environment: ${{ inputs.approval_environment }}
+    steps:
+      - name: Approved
+        shell: bash
+        run: echo "Large-file migration approved - proceeding."
+
+  migrate_lfs:
+    name: Large-file Migration
+    runs-on: ${{ startsWith(inputs.runner_label, '[') && fromJson(inputs.runner_label) || inputs.runner_label }}
+    timeout-minutes: 50400
+    needs: [scan, approval_lfs]
+    if: ${{ always()
+      && inputs.run_lfs_migration == 'true'
+      && needs.approval_lfs.result == 'success'
+      && (needs.scan.result == 'success' || (needs.scan.result == 'skipped' && inputs.run_scan == 'false')) }}
+    environment: ${{ inputs.environment }}
     env:
       GH_TOKEN: ${{ secrets.GH_PAT }}
       GH_PAT: ${{ secrets.GH_PAT }}
@@ -210,6 +225,18 @@ jobs:
             exit 1
           fi
           echo "BBS_BASE_URL=${BBS_BASE_URL}" >> "$GITHUB_ENV"
+
+      - name: Check credentials are visible to this job
+        shell: bash
+        env:
+          GH_PAT_CHECK: ${{ secrets.GH_PAT }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${GH_PAT_CHECK}" ]]; then
+            echo "::error::GH_PAT is empty. Add it (and BBS_PAT/BBS_PASSWORD, SSH_PRIVATE_KEY) to the '${{ inputs.environment }}' environment, or at repo level."
+            exit 1
+          fi
+          echo "GH_PAT is present."
 
       - name: Verify GitHub CLI auth (non-interactive)
         shell: bash
@@ -334,6 +361,8 @@ jobs:
           BBS_DISABLE_SSL_VERIFY: ${{ vars.BBS_DISABLE_SSL_VERIFY }}
           BITBUCKET_HOME: ${{ vars.BITBUCKET_HOME }}
           BBS_SHARED_HOME: ${{ vars.BBS_SHARED_HOME }}
+          BBS_SSH_PORT: ${{ vars.BBS_SSH_PORT }}
+          BBS_ARCHIVE_DOWNLOAD_HOST: ${{ vars.BBS_ARCHIVE_DOWNLOAD_HOST }}
           SSH_USER: ${{ vars.SSH_USER }}
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           TARGET_API_URL: ${{ env.TARGET_API_URL }}
